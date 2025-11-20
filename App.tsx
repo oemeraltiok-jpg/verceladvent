@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Lock, Gift, Smile, CheckCircle, X, Snowflake, Sparkles, Star, User as UserIcon, Users } from 'lucide-react';
+import { Lock, Gift, Smile, CheckCircle, X, Snowflake, Sparkles, Star, User as UserIcon, Users, KeyRound } from 'lucide-react';
 import { supabase } from './supabaseClient';
 import { jokes, SOUNDS } from './constants';
 import { Joke, User, DoorStats } from './types';
 
 // --- Configuration ---
-// Wir nutzen hier den Thumbnail-Link (&sz=w1000), da dieser von Google Drive zuverlässiger
-// für das direkte Einbinden in Webseiten ausgeliefert wird als der Export-Link.
 const GOOGLE_DRIVE_IMAGE_ID = "1E992lg-EHo5a-8eMaPOmMwTKUInHCUfd"; 
 const LOGO_URL = `https://drive.google.com/thumbnail?id=${GOOGLE_DRIVE_IMAGE_ID}&sz=w1000`;
+
+// Static Gatekeeper Credentials
+const GATE_USER = "CRM-Tech";
+const GATE_PASS = "Start2006!";
+const GATE_STORAGE_KEY = "crm_gate_unlocked";
 
 // --- Helper Components ---
 
@@ -49,6 +52,83 @@ const Snow = () => {
     </div>
   );
 };
+
+// --- Gatekeeper Component ---
+
+interface GatekeeperScreenProps {
+    onUnlock: () => void;
+}
+
+const GatekeeperScreen: React.FC<GatekeeperScreenProps> = ({ onUnlock }) => {
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    const [error, setError] = useState<string | null>(null);
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        if (username === GATE_USER && password === GATE_PASS) {
+            localStorage.setItem(GATE_STORAGE_KEY, 'true');
+            onUnlock();
+        } else {
+            setError("Zugriff verweigert. Falsche Daten.");
+            setPassword("");
+        }
+    };
+
+    return (
+        <div className="flex flex-col items-center justify-center min-h-screen w-full p-4 relative z-10">
+            <div className="mb-8 relative z-20 transform hover:scale-105 transition-transform duration-500">
+                <img 
+                    src={LOGO_URL} 
+                    alt="Logo" 
+                    className="w-48 md:w-64 h-auto drop-shadow-[0_10px_10px_rgba(0,0,0,0.3)]"
+                    referrerPolicy="no-referrer"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+            </div>
+
+            <div className="animate-float bg-white/95 backdrop-blur-xl border-8 border-christmas-red rounded-3xl p-8 md:p-10 shadow-[0_20px_60px_rgba(0,0,0,0.5)] w-full max-w-lg text-center relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-christmas-red via-christmas-gold to-christmas-red" />
+                
+                <h1 className="relative z-10 font-display text-3xl font-bold mb-2 text-christmas-red">Zugriffskontrolle</h1>
+                <p className="relative z-10 font-body text-gray-600 text-sm mb-6">Bitte authentifiziere dich für den Team-Bereich.</p>
+
+                {error && <div className="relative z-10 mb-4 p-3 bg-red-100 text-red-700 text-sm rounded-lg border border-red-200 animate-[shake_0.5s_ease-in-out]">{error}</div>}
+
+                <form onSubmit={handleSubmit} className="relative z-10 flex flex-col gap-4 text-left">
+                    <div className="relative group/input">
+                        <UserIcon className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+                        <input 
+                            type="text" 
+                            value={username} 
+                            onChange={(e) => setUsername(e.target.value)} 
+                            placeholder="Team-Benutzername" 
+                            className="w-full pl-12 pr-4 py-3 bg-gray-50 text-christmas-darkGreen font-body text-base rounded-xl border-2 border-gray-200 focus:border-christmas-gold focus:bg-white outline-none placeholder:text-gray-400 transition-all" 
+                            required 
+                        />
+                    </div>
+                    <div className="relative group/input">
+                        <KeyRound className="absolute left-4 top-3.5 text-gray-400 w-5 h-5" />
+                        <input 
+                            type="password" 
+                            value={password} 
+                            onChange={(e) => setPassword(e.target.value)} 
+                            placeholder="Team-Passwort" 
+                            className="w-full pl-12 pr-4 py-3 bg-gray-50 text-christmas-darkGreen font-body text-base rounded-xl border-2 border-gray-200 focus:border-christmas-gold focus:bg-white outline-none placeholder:text-gray-400 transition-all" 
+                            required 
+                        />
+                    </div>
+
+                    <button type="submit" className="mt-4 bg-christmas-green text-white font-display font-bold text-xl py-3 px-8 rounded-xl shadow-xl hover:shadow-2xl hover:-translate-y-1 active:translate-y-0 transition-all hover:bg-christmas-darkGreen">
+                        Zugang freischalten
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+};
+
+// --- Auth & App Components ---
 
 interface AuthScreenProps {
     onLogin: (u: string, p: string) => Promise<{success: boolean; message?: string}>;
@@ -260,7 +340,7 @@ const Door: React.FC<DoorProps> = ({ day, isOpen, isLocked, onOpen }) => {
 
 interface CalendarScreenProps {
     user: User;
-    openedDoors: Record<number, boolean>;
+    openedDoors: Record<number, number>;
     canOpenDoor: (day: number) => boolean;
     onDoorOpen: (day: number) => void;
     onLogout: () => void;
@@ -404,8 +484,9 @@ const JokeModal = ({ joke, onClose, isOpen }: { joke: Joke | null, onClose: () =
 // --- Main App ---
 
 const App = () => {
+  const [isGateOpen, setIsGateOpen] = useState(false);
   const [user, setUser] = useState<User | null>(null);
-  const [openedDoors, setOpenedDoors] = useState<Record<number, boolean>>({});
+  const [openedDoors, setOpenedDoors] = useState<Record<number, number>>({});
   const [currentJoke, setCurrentJoke] = useState<Joke | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedDayStats, setSelectedDayStats] = useState<DoorStats>({ day: new Date().getDate(), users: [] });
@@ -416,6 +497,13 @@ const App = () => {
   const START_DATE = new Date("2025-11-30T00:00:00");
 
   useEffect(() => {
+      // Check Gatekeeper Status
+      const gateStatus = localStorage.getItem(GATE_STORAGE_KEY);
+      if (gateStatus === 'true') {
+          setIsGateOpen(true);
+      }
+
+      // Check User Session
       const checkSession = async () => {
           const storedUserId = localStorage.getItem('team_advent_user_id');
           if (storedUserId) {
@@ -449,7 +537,7 @@ const App = () => {
           .eq('user_id', userId);
       
       if (data) {
-          const opened: Record<number, boolean> = {};
+          const opened: Record<number, number> = {};
           data.forEach((d: any) => {
               opened[d.day] = d.joke_id; // Store ID instead of boolean if needed later
           });
@@ -580,14 +668,6 @@ const App = () => {
 
       // Check if already opened
       if (openedDoors[day]) {
-           // Find the joke associated with this day (if we stored the ID, we could look it up specifically, 
-           // but here we just pick one or use consistent hashing if needed)
-           // For now, we just show a random one or if we saved it, show that. 
-           // Simple version: If opened, show a random joke again or retrieve from DB if we wanted persistence consistency.
-           // Let's grab a random one from the list that isn't the one from yesterday to keep it fresh?
-           // Or actually, let's find the jokeId we stored in state if we did.
-           // In loadOpenedDoors we stored joke_id.
-           // @ts-ignore
            const storedJokeId = openedDoors[day];
            const joke = jokes.find(j => j.id === storedJokeId);
            if (joke) {
@@ -598,8 +678,6 @@ const App = () => {
       }
 
       // New Open
-      // Pick a random joke that hasn't been used by this user? Or just any random joke.
-      // Let's filter used jokes to avoid repetition if possible, though with 24 doors and 100 jokes it's fine.
       const usedJokeIds = Object.values(openedDoors);
       const availableJokes = jokes.filter(j => !usedJokeIds.includes(j.id));
       const pool = availableJokes.length > 0 ? availableJokes : jokes;
@@ -614,7 +692,7 @@ const App = () => {
       if (error) {
           alert("Fehler beim Speichern. Bitte versuche es erneut.");
       } else {
-          setOpenedDoors(prev => ({ ...prev, [day]: true })); // Simplified: just mark as true locally or store ID
+          setOpenedDoors(prev => ({ ...prev, [day]: randomJoke.id }));
           setCurrentJoke(randomJoke);
           setIsModalOpen(true);
       }
@@ -635,17 +713,21 @@ const App = () => {
     <div className="min-h-screen w-full bg-gradient-to-b from-christmas-red via-christmas-redLight to-christmas-red relative selection:bg-christmas-gold selection:text-christmas-red overflow-x-hidden">
       <Snow />
       <main className="relative z-10 min-h-screen flex flex-col">
-        {user ? (
-            <CalendarScreen 
-                user={user} 
-                openedDoors={openedDoors} 
-                canOpenDoor={canOpenDoor} 
-                onDoorOpen={handleDoorOpen}
-                onLogout={handleLogout}
-                selectedDayStats={selectedDayStats}
-            />
+        {!isGateOpen ? (
+            <GatekeeperScreen onUnlock={() => setIsGateOpen(true)} />
         ) : (
-            <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />
+            user ? (
+                <CalendarScreen 
+                    user={user} 
+                    openedDoors={openedDoors} 
+                    canOpenDoor={canOpenDoor} 
+                    onDoorOpen={handleDoorOpen}
+                    onLogout={handleLogout}
+                    selectedDayStats={selectedDayStats}
+                />
+            ) : (
+                <AuthScreen onLogin={handleLogin} onRegister={handleRegister} />
+            )
         )}
       </main>
       <JokeModal isOpen={isModalOpen} joke={currentJoke} onClose={handleCloseModal} />
