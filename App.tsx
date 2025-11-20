@@ -267,15 +267,21 @@ const Door: React.FC<DoorProps> = ({ day, isOpen, isLocked, onOpen }) => {
 
     const handleClick = () => {
         if (isLocked && !isOpen) return;
-        if (!isOpen) {
-            if (!audioRef.current) {
-                audioRef.current = new Audio(SOUNDS.bell);
-                audioRef.current.volume = 0.6;
-            }
-            audioRef.current.currentTime = 0;
-            audioRef.current.play().catch(e => console.log("Audio error", e));
+        
+        // If already open, allow clicking to show the joke again (modal)
+        if (isOpen) {
             onOpen(day);
+            return;
         }
+
+        // If closed, play sound and open
+        if (!audioRef.current) {
+            audioRef.current = new Audio(SOUNDS.bell);
+            audioRef.current.volume = 0.6;
+        }
+        audioRef.current.currentTime = 0;
+        audioRef.current.play().catch(e => console.log("Audio error", e));
+        onOpen(day);
     };
 
     return (
